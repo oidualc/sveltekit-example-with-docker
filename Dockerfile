@@ -1,28 +1,20 @@
-FROM node:22-alpine as base
+FROM node:23-alpine AS base
 
-FROM base as deps-extractor
+FROM base AS pnpm
+RUN corepack enable pnpm
+
+FROM pnpm AS deps
 WORKDIR /app
-RUN apk add --no-cache jq
-COPY package.json .
-RUN jq '{dependencies, devDependencies, peerDependencies} | with_entries(select( .value != null ))' package.json > deps.json
-
-FROM base as pnpm
-RUN corepack enable
-RUN corepack install -g pnpm@9
-
-FROM pnpm as deps
-WORKDIR /app
-COPY --from=deps-extractor /app/deps.json ./package.json
-COPY pnpm-lock.yaml .
+COPY package.json pnpm-lock.yaml .
 RUN --mount=type=cache,target=/root/.pnpm pnpm install --frozen-lockfile --prefer-offline
 
-FROM pnpm as builder
+FROM pnpm AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-RUN pnpm exec svelte-kit sync && pnpm build
+RUN pnpm build
 
-FROM base as runner
+FROM base AS runner
 WORKDIR /app
 RUN addgroup -S -g 1001 nodejs
 RUN adduser -S -u 1001 sveltekit
